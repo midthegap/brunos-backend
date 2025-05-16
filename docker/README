@@ -1,0 +1,14 @@
+# Start docker container with:
+docker compose up
+
+# Start docker container in detached mode:
+docker compose up -d
+
+# Stop docker container with:
+docker compose down
+
+# check container name
+docker ps
+
+# read logs with
+docker logs -f <container_name>
