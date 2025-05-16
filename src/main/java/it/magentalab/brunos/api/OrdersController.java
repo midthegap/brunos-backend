@@ -46,7 +46,7 @@ public class OrdersController {
 	@GetMapping(value = "/report", produces = MediaType.TEXT_PLAIN_VALUE)
 	public ResponseEntity<String> generateReport() {
 		log.info("Generating orders report");
-		String report = orderService.generateOrdersReport();
+		String report = orderService.generateReport();
 		return ResponseEntity.ok(report);
 	}
 

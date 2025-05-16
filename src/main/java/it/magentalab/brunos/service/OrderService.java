@@ -18,11 +18,13 @@ import java.util.stream.Collectors;
 public class OrderService {
 
     private final OrderRepository orderRepository;
+	private final SocketIoService socketIoService;
 
     @Autowired
-    public OrderService(OrderRepository orderRepository) {
+    public OrderService(OrderRepository orderRepository, SocketIoService socketIoService) {
         this.orderRepository = orderRepository;
-    }
+		this.socketIoService = socketIoService;
+	}
 
     public Order save(OrderDto orderDto) {
         // Convert OrderDto to Order entity
@@ -30,7 +32,9 @@ public class OrderService {
         order.setName(orderDto.name());
         order.setArticle(orderDto.article());
 
-        return orderRepository.save(order);
+        var saved = orderRepository.save(order);
+		this.socketIoService.sendOrder(saved);
+		return saved;
     }
 
     public void delete(OrderDto orderDto) {
@@ -38,10 +42,11 @@ public class OrderService {
                 .forEach(order -> {
 					log.info("Deleting order: {}", order);
 					orderRepository.delete(order);
+					this.socketIoService.deleteOrder(order);
 				});
     }
 
-    public String generateOrdersReport() {
+    public String generateReport() {
         List<Order> allOrders = orderRepository.findAll();
         StringBuilder report = new StringBuilder();
 
@@ -87,6 +92,7 @@ public class OrderService {
     public int deleteAllOrders() {
         long count = orderRepository.count();
         orderRepository.deleteAll();
+		this.socketIoService.reset();
         return (int) count;
     }
 
