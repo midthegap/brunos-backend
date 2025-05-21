@@ -22,20 +22,27 @@ public class SocketIoConfig {
 
 	@Bean
 	public SocketIOServer socketIOServer() {
-		com.corundumstudio.socketio.Configuration config = new com.corundumstudio.socketio.Configuration();
-		config.setHostname(host);
-		config.setPort(port);
+    com.corundumstudio.socketio.Configuration config = new com.corundumstudio.socketio.Configuration();
+    config.setHostname(host);
+    config.setPort(port);
 
-		// configurazione CORS per Socket.IO
-		config.setOrigin("*");  // Permetti richieste da qualsiasi origine
-		// config.setOrigin("http://localhost:4200"); // per Angular in sviluppo locale
+    // Configurazione CORS per Socket.IO
+    config.setOrigin("*");
 
-		this.server = new SocketIOServer(config);
-		this.server.start();
+    // Impostazioni per ridurre le doppie connessioni
+    config.setPingInterval(25000);
+    config.setPingTimeout(20000);
+    config.setUpgradeTimeout(10000);
 
-		log.info("Created socket connection on port={} host={}", port, host);
-		return server;
-	}
+    // Forza l'uso immediato dei WebSocket, se disponibili
+    //config.setTransports(Transport.WEBSOCKET);
+
+    this.server = new SocketIOServer(config);
+    this.server.start();
+
+    log.info("Created socket connection on port={} host={}", port, host);
+    return server;
+}
 
 	@PreDestroy
 	public void destroy(){

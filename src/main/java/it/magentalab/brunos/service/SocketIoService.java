@@ -10,7 +10,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -21,7 +20,7 @@ public class SocketIoService {
 	private static final String DELETE_EVENT = "delete";
 	private static final String RESET_EVENT = "reset";
 
-	private final Map<String, Set<SocketIOClient>> connectedDevices = new ConcurrentHashMap<>();
+	private final Set<SocketIOClient> clients = ConcurrentHashMap.newKeySet();
 
 	private final OrderRepository orderRepository;
 
@@ -33,38 +32,37 @@ public class SocketIoService {
 		socketIOServer.addDisconnectListener(this.onDisconnection);
 	}
 
+	private ConnectListener onNewConnection = client -> {
+    String ipAddress = client.getHandshakeData().getAddress().getAddress().getHostAddress();
+    String transport = client.getHandshakeData().getHttpHeaders().get("Connection");
+    String upgrade = client.getHandshakeData().getHttpHeaders().get("Upgrade");
+
+    log.debug("Connection request: IP={}, Transport={}, Upgrade={}", ipAddress, transport, upgrade);
+
+    if (ipAddress != null) {
+        // Verifica se il client è già connesso
+        boolean clientExists = clients.stream()
+            .anyMatch(c -> c.getSessionId().equals(client.getSessionId()));
+
+        if (!clientExists) {
+            clients.add(client);
+            log.info("Connessione accettata, client ID: {}", client.getSessionId());
+            sendAllOrdersTo(client);
+        } else {
+            log.debug("Connection upgrade o controllo connettività, client ID: {}", client.getSessionId());
+        }
+    } else {
+        log.warn("Nuova connessione rifiutata. ip={}", ipAddress);
+        client.disconnect();
+    }
+};
+
 	private DisconnectListener onDisconnection = client -> {
 		String ipAddress = client.getHandshakeData().getAddress().getAddress().getHostAddress();
 
-		Set<SocketIOClient> sessions = connectedDevices.get(ipAddress);
-		if (sessions != null) {
-			sessions.remove(client);
-			if (sessions.isEmpty()) {
-				connectedDevices.remove(ipAddress);
-				log.info("WS: Connessione chiusa, ip disconnesso={}", ipAddress);
-			} else {
-				log.debug("WS: Connessione chiusa. ip={} ws_id={}. Sessioni rimaste={}", ipAddress, client.getSessionId(), sessions.size());
-			}
-		}
-	};
+		log.info("Device IP {} disconnected. Session ID: {}", ipAddress, client.getSessionId());
 
-	private ConnectListener onNewConnection = client -> {
-		String ipAddress = client.getHandshakeData().getAddress().getAddress().getHostAddress();
-
-		log.info("New client connection from {}", ipAddress);
-
-		if (ipAddress != null) {
-			boolean isNewConnection = !connectedDevices.containsKey(ipAddress);
-			connectedDevices.computeIfAbsent(ipAddress, k -> ConcurrentHashMap.newKeySet()).add(client);
-			log.info("WS: Device connesso con ip={}. Numero di sessioni={}", ipAddress, connectedDevices.get(ipAddress).size());
-
-			if (isNewConnection) {
-				sendAllOrdersTo(client);
-			}
-		} else {
-			log.warn("WS: Nuova connessione rifiutata. ip={}", ipAddress);
-			client.disconnect();
-		}
+		clients.remove(client);
 	};
 
 	private void sendAllOrdersTo(SocketIOClient client) {
@@ -83,19 +81,15 @@ public class SocketIoService {
 	}
 
 	public void sendOrder(Order order) {
-		log.info("WS: Invio ordine {}", order);
-		connectedDevices.forEach((ip, sessions) -> {
-			sessions.forEach(client -> sendOrderTo(client, order));
-		});
-		log.info("WS: Ordine inviato a tutti i dispositivi");
+		log.info("Send order {}", order);
+		clients.forEach(client -> sendOrderTo(client, order));
+		log.info("Ordine inviato a tutti i dispositivi");
 	}
 
 	public void deleteOrder(Order order) {
-		log.info("WS: Cancella ordine {}", order);
-		connectedDevices.forEach((ip, sessions) -> {
-			sessions.forEach(client -> deleteOrderTo(client, order));
-		});
-		log.info("WS: Ordine cancellato a tutti i dispositivi");
+		log.info("Delete order {}", order);
+		clients.forEach(client -> deleteOrderTo(client, order));
+		log.info("Ordine cancellato a tutti i dispositivi");
 	}
 
 	private void deleteOrderTo(SocketIOClient client, Order order) {
@@ -109,9 +103,7 @@ public class SocketIoService {
 
 	public void reset() {
 		log.info("WS: reset...");
-		connectedDevices.forEach((ip, sessions) -> {
-			sessions.forEach(client -> reset(client));
-		});
+		clients.forEach(client -> reset(client));
 		log.info("WS: reset done");
 	}
 
