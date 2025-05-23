@@ -79,7 +79,7 @@ public class OrderService {
                     });
         }
 
-        report.append("\nReport generated on: ").append(LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+        //report.append("\nReport generated on: ").append(LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
 
         return report.toString();
     }
