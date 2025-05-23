@@ -1,11 +1,14 @@
 package it.magentalab.brunos.service;
 
+import com.corundumstudio.socketio.AckRequest;
 import com.corundumstudio.socketio.SocketIOClient;
 import com.corundumstudio.socketio.SocketIOServer;
 import com.corundumstudio.socketio.listener.ConnectListener;
 import com.corundumstudio.socketio.listener.DisconnectListener;
+import it.magentalab.brunos.dto.PostMessage;
 import it.magentalab.brunos.model.Order;
 import it.magentalab.brunos.repository.OrderRepository;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
@@ -19,51 +22,63 @@ public class SocketIoService {
 	private static final String ORDER_EVENT = "order";
 	private static final String DELETE_EVENT = "delete";
 	private static final String RESET_EVENT = "reset";
+	private static final String POST_EVENT = "post";
 
 	private final Set<SocketIOClient> clients = ConcurrentHashMap.newKeySet();
 
 	private final OrderRepository orderRepository;
+	private final SocketIOServer socketIOServer;
 
 	@Autowired
 	public SocketIoService(SocketIOServer socketIOServer, OrderRepository orderRepository) {
 		this.orderRepository = orderRepository;
+		this.socketIOServer = socketIOServer;
 
-		socketIOServer.addConnectListener(this.onNewConnection);
-		socketIOServer.addDisconnectListener(this.onDisconnection);
+		socketIOServer.addConnectListener(this.onNewConnect);
+		socketIOServer.addDisconnectListener(this.onDisconnect);
+		socketIOServer.addEventListener(POST_EVENT, PostMessage.class, this::onPostEventReceived);
 	}
 
-	private ConnectListener onNewConnection = client -> {
-    String ipAddress = client.getHandshakeData().getAddress().getAddress().getHostAddress();
-    String transport = client.getHandshakeData().getHttpHeaders().get("Connection");
-    String upgrade = client.getHandshakeData().getHttpHeaders().get("Upgrade");
+	private final ConnectListener onNewConnect = client -> {
+		String ipAddress = client.getHandshakeData().getAddress().getAddress().getHostAddress();
+		String transport = client.getHandshakeData().getHttpHeaders().get("Connection");
+		String upgrade = client.getHandshakeData().getHttpHeaders().get("Upgrade");
 
-    log.debug("Connection request: IP={}, Transport={}, Upgrade={}", ipAddress, transport, upgrade);
+		log.debug("Connection request: IP={}, Transport={}, Upgrade={}", ipAddress, transport, upgrade);
 
-    if (ipAddress != null) {
-        // Verifica se il client è già connesso
-        boolean clientExists = clients.stream()
-            .anyMatch(c -> c.getSessionId().equals(client.getSessionId()));
+		if (ipAddress != null) {
+			// Verifica se il client è già connesso
+			boolean clientExists = clients.stream()
+				.anyMatch(c -> c.getSessionId().equals(client.getSessionId()));
 
-        if (!clientExists) {
-            clients.add(client);
-            log.info("Connessione accettata, client ID: {}", client.getSessionId());
-            sendAllOrdersTo(client);
-        } else {
-            log.debug("Connection upgrade o controllo connettività, client ID: {}", client.getSessionId());
-        }
-    } else {
-        log.warn("Nuova connessione rifiutata. ip={}", ipAddress);
-        client.disconnect();
-    }
-};
+			if (!clientExists) {
+				clients.add(client);
+				log.info("Connessione accettata, client ID: {}", client.getSessionId());
+				sendAllOrdersTo(client);
+			} else {
+				log.debug("Connection upgrade o controllo connettività, client ID: {}", client.getSessionId());
+			}
+		} else {
+			log.warn("Nuova connessione rifiutata. ip={}", ipAddress);
+			client.disconnect();
+		}
+	};
 
-	private DisconnectListener onDisconnection = client -> {
+	private final DisconnectListener onDisconnect = client -> {
 		String ipAddress = client.getHandshakeData().getAddress().getAddress().getHostAddress();
 
 		log.info("Device IP {} disconnected. Session ID: {}", ipAddress, client.getSessionId());
 
 		clients.remove(client);
 	};
+
+	private void onPostEventReceived(SocketIOClient sender, PostMessage message, AckRequest ackRequest) {
+		log.info("Post dal client {}: {}", sender.getSessionId(), message);
+		// Inoltra a tutti tranne il mittente
+		clients.stream()
+			.filter(client -> !client.getSessionId().equals(sender.getSessionId()))
+			.forEach(client -> client.sendEvent(POST_EVENT, message));
+	}
 
 	private void sendAllOrdersTo(SocketIOClient client) {
 		orderRepository.findAll().forEach(order -> {
@@ -113,6 +128,14 @@ public class SocketIoService {
 			client.sendEvent(RESET_EVENT);
 		} catch (Exception e) {
 			log.error("WS: errore nella comunicazione session id={}", client.getSessionId());
+		}
+	}
+
+	@PreDestroy
+	public void shutdownSocketServer() {
+		if (this.socketIOServer != null) {
+			log.info("Arresto SocketIO...");
+			this.socketIOServer.stop();
 		}
 	}
 }
