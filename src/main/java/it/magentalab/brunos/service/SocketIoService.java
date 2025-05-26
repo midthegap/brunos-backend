@@ -15,6 +15,9 @@ import org.springframework.stereotype.Service;
 
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @Slf4j
@@ -23,8 +26,10 @@ public class SocketIoService {
 	private static final String DELETE_EVENT = "delete";
 	private static final String RESET_EVENT = "reset";
 	private static final String POST_EVENT = "post";
+	private static final String INIT_EVENT = "init";
 
 	private final Set<SocketIOClient> clients = ConcurrentHashMap.newKeySet();
+	private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
 
 	private final OrderRepository orderRepository;
 	private final SocketIOServer socketIOServer;
@@ -54,7 +59,8 @@ public class SocketIoService {
 			if (!clientExists) {
 				clients.add(client);
 				log.info("Connessione accettata, client ID: {}", client.getSessionId());
-				sendAllOrdersTo(client);
+				sendInit(client);
+				scheduler.schedule(() -> sendAllOrdersTo(client), 1500, TimeUnit.MILLISECONDS);
 			} else {
 				log.debug("Connection upgrade o controllo connettività, client ID: {}", client.getSessionId());
 			}
@@ -80,7 +86,13 @@ public class SocketIoService {
 			.forEach(client -> client.sendEvent(POST_EVENT, message));
 	}
 
+	private void sendInit(SocketIOClient client) {
+		log.debug("Sending init event to client {}", client.getSessionId());
+		client.sendEvent(INIT_EVENT);
+	}
+
 	private void sendAllOrdersTo(SocketIOClient client) {
+		log.debug("Sending all orders to client {}", client.getSessionId());
 		orderRepository.findAll().forEach(order -> {
 			sendOrderTo(client, order);
 		});
