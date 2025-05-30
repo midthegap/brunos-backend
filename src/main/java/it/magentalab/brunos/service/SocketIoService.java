@@ -27,6 +27,7 @@ public class SocketIoService {
 	private static final String RESET_EVENT = "reset";
 	private static final String POST_EVENT = "post";
 	private static final String INIT_EVENT = "init";
+	private static final String MENU_UPDATED_EVENT = "menu-updated";
 
 	private final Set<SocketIOClient> clients = ConcurrentHashMap.newKeySet();
 	private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
@@ -119,6 +120,11 @@ public class SocketIoService {
 		log.info("Ordine cancellato a tutti i dispositivi");
 	}
 
+	public void menuUpdated() {
+		log.info("Send '{}' to all clients", MENU_UPDATED_EVENT);
+		clients.forEach(client -> client.sendEvent(MENU_UPDATED_EVENT));
+	}
+
 	private void deleteOrderTo(SocketIOClient client, Order order) {
 		try {
 			log.trace("Deleting {} to client {}...", order, client.getSessionId());
@@ -130,7 +136,7 @@ public class SocketIoService {
 
 	public void reset() {
 		log.info("WS: reset...");
-		clients.forEach(client -> reset(client));
+		clients.forEach(this::reset);
 		log.info("WS: reset done");
 	}
 
