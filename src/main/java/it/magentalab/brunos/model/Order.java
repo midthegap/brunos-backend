@@ -20,4 +20,8 @@ public class Order {
 
 	private String name;
 
+	public String getCleanedArticle() {
+		return article == null ? null : article.toLowerCase().trim();
+	}
+
 }

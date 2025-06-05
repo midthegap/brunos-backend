@@ -70,7 +70,7 @@ public class OrderService {
 
 			// Group orders by article and count them
 			Map<String, Long> articleCounts = allOrders.stream()
-				.collect(Collectors.groupingBy(Order::getArticle, Collectors.counting()));
+				.collect(Collectors.groupingBy(Order::getCleanedArticle, Collectors.counting()));
 
 			// Sort articles by count in descending order
 			articleCounts.entrySet().stream()
@@ -83,9 +83,10 @@ public class OrderService {
 						.append(article)
 						.append("\n");
 				});
+
+			report.append("\nGrazie, a dopo!");
 		}
 
-		//report.append("\nReport generated on: ").append(LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
 
 		return report.toString();
 	}
